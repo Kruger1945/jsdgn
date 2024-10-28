@@ -1,0 +1,102 @@
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <stdint.h> 
+ 
+#pragma pack(push, 1) 
+typedef struct { 
+    uint16_t bfType;         // Тип файла, должен быть 'BM' 
+    uint32_t bfSize;         // Размер файла в байтах 
+    uint16_t bfReserved1;    // Зарезервировано 
+    uint16_t bfReserved2;    // Зарезервировано 
+    uint32_t bfOffBits;      // Смещение до начала данных пикселей 
+} BITMAPFILEHEADER; 
+ 
+typedef struct { 
+    uint32_t biSize;         // Размер структуры 
+    int32_t  biWidth;        // Ширина изображения 
+    int32_t  biHeight;       // Высота изображения 
+    uint16_t biPlanes;       // Количество цветовых плоскостей 
+    uint16_t biBitCount;     // Битовая глубина 
+    uint32_t biCompression;   // Тип сжатия 
+    uint32_t biSizeImage;     // Размер изображения 
+    int32_t  biXPelsPerMeter; // Горизонтальная разрешающая способность 
+    int32_t  biYPelsPerMeter; // Вертикальная разрешающая способность 
+    uint32_t biClrUsed;       // Количество используемых цветов 
+    uint32_t biClrImportant;   // Важные цвета 
+} BITMAPINFOHEADER; 
+#pragma pack(pop) 
+ 
+void applyBlur(uint8_t *image, int width, int height) { 
+    uint8_t *temp = (uint8_t *)malloc(width * height * 3); 
+    if (!temp) { 
+        perror("Не удалось выделить память"); 
+        return; 
+    } 
+ 
+    for (int y = 1; y < height - 1; y++) { 
+        for (int x = 1; x < width - 1; x++) { 
+            int r = 0, g = 0, b = 0; 
+            for (int dy = -1; dy <= 1; dy++) { 
+                for (int dx = -1; dx <= 1; dx++) { 
+                    int pixelIndex = ((y + dy) * width + (x + dx)) * 3; 
+                    b += image[pixelIndex]; 
+                    g += image[pixelIndex + 1]; 
+                    r += image[pixelIndex + 2]; 
+                } 
+            } 
+            int index = (y * width + x) * 3; 
+            temp[index] = b / 9; 
+            temp[index + 1] = g / 9; 
+            temp[index + 2] = r / 9; 
+        } 
+    } 
+ 
+    // Копируем размытое изображение обратно 
+    for (int i = 0; i < width * height * 3; i++) { 
+        image[i] = temp[i]; 
+    } 
+ 
+    free(temp); 
+} 
+ 
+int main() { 
+    FILE *file = fopen("input.bmp", "rb"); 
+    if (!file) { 
+        perror("Не удалось открыть файл"); 
+        return EXIT_FAILURE; 
+    } 
+ 
+    BITMAPFILEHEADER bfh; 
+    fread(&bfh, sizeof(BITMAPFILEHEADER), 1, file); 
+    BITMAPINFOHEADER bih; 
+    fread(&bih, sizeof(BITMAPINFOHEADER), 1, file); 
+ 
+    if (bfh.bfType != 0x4D42) { 
+        fprintf(stderr, "Файл не является BMP\n"); 
+        fclose(file); 
+        return EXIT_FAILURE; 
+    } 
+ 
+    // Пропуск заголовка и цветовой таблицы (если есть) 
+    fseek(file, bfh.bfOffBits, SEEK_SET); 
+    int width = bih.biWidth; 
+    int height = bih.biHeight; 
+    uint8_t *image = (uint8_t *)malloc(width * height * 3); 
+    fread(image, width * height * 3, 1, file); 
+    fclose(file); 
+ 
+    // Применяем фильтр размытия 
+    applyBlur(image, width, height); 
+ 
+    // Записываем обратно в новый файл 
+    file = fopen("output.bmp", "wb"); 
+    fwrite(&bfh, sizeof(BITMAPFILEHEADER), 1, file); 
+    fwrite(&bih, sizeof(BITMAPINFOHEADER), 1, file); 
+    fwrite(image, width * height * 3, 1, file); 
+    fclose(file); 
+ 
+    free(image); 
+    printf("Фильтр размытия успешно применен и сохранен в output.bmp\n"); 
+ 
+    return EXIT_SUCCESS; 
+}
